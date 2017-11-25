@@ -31,8 +31,6 @@ const char* password = "homeassistant";
 const char* MQTT_UP = "active";
 char* MQTT_LIGHT_RGB_STATE_TOPIC = "XXXXXXXX/rgb/light/status";
 char* MQTT_LIGHT_RGB_COMMAND_TOPIC = "XXXXXXXX/rgb/light/switch";
-char* MQTT_LIGHT_RGB_BRIGHTNESS_STATE_TOPIC = "XXXXXXXX/rgb/brightness/status";
-char* MQTT_LIGHT_RGB_BRIGHTNESS_COMMAND_TOPIC = "XXXXXXXX/rgb/brightness/set";
 char* MQTT_LIGHT_RGB_RGB_STATE_TOPIC = "XXXXXXXX/rgb/rgb/status";
 char* MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC = "XXXXXXXX/rgb/rgb/set";
 
@@ -71,7 +69,6 @@ const char* LIGHT_OFF = "OFF";
 
 // store the state of the rgb light (colors, brightness, ...)
 boolean m_rgb_state = false;
-uint8_t m_rgb_brightness = 255;
 uint8_t m_rgb_red = 255;
 uint8_t m_rgb_green = 255;
 uint8_t m_rgb_blue = 255;
@@ -142,8 +139,6 @@ void setup()
   // replace chip ID in channel names
   memcpy(MQTT_LIGHT_RGB_STATE_TOPIC, chip_id, 8);
   memcpy(MQTT_LIGHT_RGB_COMMAND_TOPIC, chip_id, 8);
-  memcpy(MQTT_LIGHT_RGB_BRIGHTNESS_STATE_TOPIC, chip_id, 8);
-  memcpy(MQTT_LIGHT_RGB_BRIGHTNESS_COMMAND_TOPIC, chip_id, 8);
   memcpy(MQTT_LIGHT_RGB_RGB_STATE_TOPIC, chip_id, 8);
   memcpy(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC, chip_id, 8);
 
@@ -170,10 +165,10 @@ void setup()
 }
 
 // function called to adapt the brightness and the colors of the led
-void setColor(uint8_t p_red, uint8_t p_green, uint8_t p_blue) {
-  analogWrite(RGB_LIGHT_RED_PIN, map(p_red, 0, 255, 0, m_rgb_brightness));
-  analogWrite(RGB_LIGHT_GREEN_PIN, map(p_green, 0, 255, 0, m_rgb_brightness));
-  analogWrite(RGB_LIGHT_BLUE_PIN, map(p_blue, 0, 255, 0, m_rgb_brightness));
+void setColor(uint8_t r, uint8_t g, uint8_t b) {
+  analogWrite(RGB_LIGHT_RED_PIN, r);
+  analogWrite(RGB_LIGHT_GREEN_PIN, g);
+  analogWrite(RGB_LIGHT_BLUE_PIN, b);
 }
 
 
@@ -216,12 +211,6 @@ void publishW2State() {
 void publishRGBColor() {
   snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d,%d,%d", m_rgb_red, m_rgb_green, m_rgb_blue);
   client.publish(MQTT_LIGHT_RGB_RGB_STATE_TOPIC, m_msg_buffer, true);
-}
-
-// function called to publish the brightness of the led (0-100)
-void publishRGBBrightness() {
-  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", m_rgb_brightness);
-  client.publish(MQTT_LIGHT_RGB_BRIGHTNESS_STATE_TOPIC, m_msg_buffer, true);
 }
 
 void publishW1Brightness() {
@@ -275,16 +264,6 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       m_w2_state = false;
       setW2(0);
       publishW2State();
-    }
-  } else if (String(MQTT_LIGHT_RGB_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
-    uint8_t brightness = payload.toInt();
-    if (brightness < 0 || brightness > 255) {
-      // do nothing...
-      return;
-    } else {
-      m_rgb_brightness = brightness;
-      setColor(m_rgb_red, m_rgb_green, m_rgb_blue);
-      publishRGBBrightness();
     }
   } else if (String(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
     uint8_t brightness = payload.toInt();
@@ -367,7 +346,6 @@ void reconnect() {
       // Once connected, publish an announcement...
       // publish the initial values
       publishRGBState();
-      publishRGBBrightness();
       publishRGBColor();
       publishW1State();
       publishW1Brightness();
@@ -375,7 +353,6 @@ void reconnect() {
       publishW2Brightness();
       // ... and resubscribe
       client.subscribe(MQTT_LIGHT_RGB_COMMAND_TOPIC);
-      client.subscribe(MQTT_LIGHT_RGB_BRIGHTNESS_COMMAND_TOPIC);
       client.subscribe(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC);
       client.subscribe(MQTT_LIGHT_W1_COMMAND_TOPIC);
       client.subscribe(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC);
@@ -417,7 +394,6 @@ void loop()
   delay(1);
   if (i == 0) {
     publishRGBState();
-    publishRGBBrightness();
     publishRGBColor();
     publishW1State();
     publishW1Brightness();
