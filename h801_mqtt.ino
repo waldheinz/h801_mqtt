@@ -144,6 +144,8 @@ void setup()
 
   digitalWrite(RED_PIN, 1);
 
+  updateLEDs();
+
   // OTA
   // do not start OTA server if no password has been set
   if (password != "") {
