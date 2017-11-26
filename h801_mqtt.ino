@@ -162,13 +162,23 @@ void setColor(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void setW1(uint8_t brightness) {
-  // convert the brightness in % (0-100%) into a digital value (0-255)
   analogWrite(W1_PIN, brightness);
 }
 
 void setW2(uint8_t brightness) {
-  // convert the brightness in % (0-100%) into a digital value (0-255)
   analogWrite(W2_PIN, brightness);
+}
+
+void updateLEDs() {
+  if (m_global_on) {
+    setColor(m_rgb_red, m_rgb_green, m_rgb_blue);
+    setW1(m_w1_brightness);
+    setW2(m_w2_brightness);
+  } else {
+    setColor(0, 0, 0);
+    setW1(0);
+    setW2(0);
+  }
 }
 
 // function called to publish the state of the led (on/off)
@@ -209,15 +219,11 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
     // test if the payload is equal to "ON" or "OFF"
     if (payload.equals(String(LIGHT_ON))) {
       m_global_on = true;
-      setColor(m_rgb_red, m_rgb_green, m_rgb_blue);
-      setW1(m_w1_brightness);
-      setW2(m_w2_brightness);
+      updateLEDs();
       publishGlobalState();
     } else if (payload.equals(String(LIGHT_OFF))) {
       m_global_on = false;
-      setColor(0, 0, 0);
-      setW1(0);
-      setW2(0);
+      updateLEDs();
       publishGlobalState();
     }
   } else if (String(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
@@ -227,7 +233,7 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       return;
     } else {
       m_w1_brightness = brightness;
-      setW1(m_w1_brightness);
+      updateLEDs();
       publishW1Brightness();
     }
   } else if (String(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
@@ -237,7 +243,7 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       return;
     } else {
       m_w2_brightness = brightness;
-      setW2(m_w2_brightness);
+      updateLEDs();
       publishW2Brightness();
     }
   } else if (String(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC).equals(p_topic)) {
@@ -273,7 +279,7 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       }
     }
 
-    setColor(m_rgb_red, m_rgb_green, m_rgb_blue);
+    updateLEDs();
     publishRGBColor();
   }
 
