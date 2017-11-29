@@ -67,24 +67,56 @@ const char* LIGHT_OFF = "OFF";
 // store the state of the rgb light (colors, brightness, ...)
 boolean m_global_on = true;
 
-uint8_t m_rgb_red = 255;
-uint8_t m_rgb_green = 255;
-uint8_t m_rgb_blue = 255;
-uint8_t m_w1_brightness = 255;
-uint8_t m_w2_brightness = 255;
+struct led_state {
+  uint16_t r, g, b, w1, w2;
+
+  led_state() {
+    r = g = b = w1 = w2 = 0;
+  }
+  
+  void set_r(uint8_t _r) {
+    this->r = _r * 4;
+  }
+  
+  void set_g(uint8_t _g) {
+    this->g = _g * 4;
+  }
+  
+  void set_b(uint8_t _b) {
+    this->b = _b * 4;
+  }
+
+  void approach(const led_state& tgt) {
+    this->r  += (tgt.r  > this->r)  ? 1 : (tgt.r  < this->r)  ? -1 : 0;
+    this->g  += (tgt.g  > this->g)  ? 1 : (tgt.g  < this->g)  ? -1 : 0;
+    this->b  += (tgt.b  > this->b)  ? 1 : (tgt.b  < this->b)  ? -1 : 0;
+    this->w1 += (tgt.w1 > this->w1) ? 1 : (tgt.w1 < this->w1) ? -1 : 0;
+    this->w2 += (tgt.w2 > this->w2) ? 1 : (tgt.w2 < this->w2) ? -1 : 0;
+  }
+  
+};
+
+led_state led_current;
+led_state led_target;
+const led_state leds_off;
 
 void setup()
 {
+  led_target.r = PWMRANGE;
+  led_target.g = PWMRANGE;
+  led_target.b = PWMRANGE;
+  led_target.w1 = PWMRANGE;
+  led_target.w2 = PWMRANGE;
+
+  analogWriteRange(PWMRANGE);
   pinMode(RGB_LIGHT_RED_PIN, OUTPUT);
   pinMode(RGB_LIGHT_GREEN_PIN, OUTPUT);
   pinMode(RGB_LIGHT_BLUE_PIN, OUTPUT);
-  analogWriteRange(255);
-  setColor(0, 0, 0);
   pinMode(W1_PIN, OUTPUT);
-  setW1(0);
   pinMode(W2_PIN, OUTPUT);
-  setW2(0);
-
+  
+  apply_state(leds_off);
+  
   pinMode(GREEN_PIN, OUTPUT);
   pinMode(RED_PIN, OUTPUT);
   digitalWrite(RED_PIN, 0);
@@ -144,8 +176,6 @@ void setup()
 
   digitalWrite(RED_PIN, 1);
 
-  updateLEDs();
-
   // OTA
   // do not start OTA server if no password has been set
   if (password != "") {
@@ -156,31 +186,12 @@ void setup()
   }
 }
 
-// function called to adapt the brightness and the colors of the led
-void setColor(uint8_t r, uint8_t g, uint8_t b) {
-  analogWrite(RGB_LIGHT_RED_PIN, r);
-  analogWrite(RGB_LIGHT_GREEN_PIN, g);
-  analogWrite(RGB_LIGHT_BLUE_PIN, b);
-}
-
-void setW1(uint8_t brightness) {
-  analogWrite(W1_PIN, brightness);
-}
-
-void setW2(uint8_t brightness) {
-  analogWrite(W2_PIN, brightness);
-}
-
-void updateLEDs() {
-  if (m_global_on) {
-    setColor(m_rgb_red, m_rgb_green, m_rgb_blue);
-    setW1(m_w1_brightness);
-    setW2(m_w2_brightness);
-  } else {
-    setColor(0, 0, 0);
-    setW1(0);
-    setW2(0);
-  }
+void apply_state(const led_state& s) {
+  analogWrite(RGB_LIGHT_RED_PIN, s.r);
+  analogWrite(RGB_LIGHT_GREEN_PIN, s.g);
+  analogWrite(RGB_LIGHT_BLUE_PIN, s.b);
+  analogWrite(W1_PIN, s.w1);
+  analogWrite(W2_PIN, s.w2);
 }
 
 // function called to publish the state of the led (on/off)
@@ -194,17 +205,17 @@ void publishGlobalState() {
 
 // function called to publish the colors of the led (xx(x),xx(x),xx(x))
 void publishRGBColor() {
-  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d,%d,%d", m_rgb_red, m_rgb_green, m_rgb_blue);
+  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d,%d,%d", led_target.r / 4, led_target.g / 4, led_target.b / 4);
   client.publish(MQTT_LIGHT_RGB_RGB_STATE_TOPIC, m_msg_buffer, true);
 }
 
 void publishW1Brightness() {
-  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", m_w1_brightness);
+  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", led_target.w1 >> 2);
   client.publish(MQTT_LIGHT_W1_BRIGHTNESS_STATE_TOPIC, m_msg_buffer, true);
 }
 
 void publishW2Brightness() {
-  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", m_w2_brightness);
+  snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", led_target.w2 >> 2);
   client.publish(MQTT_LIGHT_W2_BRIGHTNESS_STATE_TOPIC, m_msg_buffer, true);
 }
 
@@ -221,11 +232,9 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
     // test if the payload is equal to "ON" or "OFF"
     if (payload.equals(String(LIGHT_ON))) {
       m_global_on = true;
-      updateLEDs();
       publishGlobalState();
     } else if (payload.equals(String(LIGHT_OFF))) {
       m_global_on = false;
-      updateLEDs();
       publishGlobalState();
     }
   } else if (String(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
@@ -234,26 +243,23 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       // do nothing...
       return;
     } else {
-      m_w1_brightness = brightness;
-      updateLEDs();
+      led_target.w1 = brightness << 2;
       publishW1Brightness();
     }
   } else if (String(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
     uint8_t brightness = payload.toInt();
     if (brightness < 0 || brightness > 255) {
-      // do nothing...
       return;
     } else {
-      m_w2_brightness = brightness;
-      updateLEDs();
+      led_target.w2 = brightness << 2;
       publishW2Brightness();
     }
   } else if (String(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC).equals(p_topic)) {
     if (payload.startsWith("#")) {
       const long tmp = strtol(&payload[1], NULL, 16);
-      m_rgb_red = tmp >> 16;
-      m_rgb_green = tmp >> 8 & 0xff;
-      m_rgb_blue = tmp & 0xff;
+      led_target.set_r(tmp >> 16);
+      led_target.set_g(tmp >> 8 & 0xff);
+      led_target.set_b(tmp & 0xff);
     } else {
       // get the position of the first and second commas
       uint8_t firstIndex = payload.indexOf(',');
@@ -263,25 +269,25 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       if (rgb_red < 0 || rgb_red > 255) {
         return;
       } else {
-        m_rgb_red = rgb_red;
+        led_target.set_r(rgb_red);
       }
 
       uint8_t rgb_green = payload.substring(firstIndex + 1, lastIndex).toInt();
       if (rgb_green < 0 || rgb_green > 255) {
         return;
       } else {
-        m_rgb_green = rgb_green;
+        led_target.set_g(rgb_green);
       }
 
       uint8_t rgb_blue = payload.substring(lastIndex + 1).toInt();
       if (rgb_blue < 0 || rgb_blue > 255) {
         return;
       } else {
-        m_rgb_blue = rgb_blue;
+        led_target.set_b(rgb_blue);
       }
     }
 
-    updateLEDs();
+    // updateLEDs();
     publishRGBColor();
   }
 
@@ -335,27 +341,37 @@ void reconnect() {
 
 uint16_t i = 0;
 
-void loop()
-{
+void loop() {
+  i++;
+
+  if (m_global_on) {
+    led_current.approach(led_target);
+  } else {
+    led_current.approach(leds_off);
+  }
+  
+  apply_state(led_current);
+  
   // process OTA updates
   httpServer.handleClient();
 
-  i++;
   if (!client.connected()) {
     reconnect();
   }
+  
   client.loop();
-
+  
   // Post the full status to MQTT every 65535 cycles. This is roughly once a minute
   // this isn't exact, but it doesn't have to be. Usually, clients will store the value
   // internally. This is only used if a client starts up again and did not receive
   // previous messages
-  delay(1);
   if (i == 0) {
     publishGlobalState();
     publishRGBColor();
     publishW1Brightness();
     publishW2Brightness();
   }
+  
+  delay(2);
 }
 
