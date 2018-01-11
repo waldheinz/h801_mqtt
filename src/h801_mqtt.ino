@@ -73,15 +73,15 @@ struct led_state {
   led_state() {
     r = g = b = w1 = w2 = 0;
   }
-  
+
   void set_r(uint8_t _r) {
     this->r = _r * 4;
   }
-  
+
   void set_g(uint8_t _g) {
     this->g = _g * 4;
   }
-  
+
   void set_b(uint8_t _b) {
     this->b = _b * 4;
   }
@@ -93,7 +93,7 @@ struct led_state {
     this->w1 += (tgt.w1 > this->w1) ? 1 : (tgt.w1 < this->w1) ? -1 : 0;
     this->w2 += (tgt.w2 > this->w2) ? 1 : (tgt.w2 < this->w2) ? -1 : 0;
   }
-  
+
 };
 
 led_state led_current;
@@ -114,9 +114,9 @@ void setup()
   pinMode(RGB_LIGHT_BLUE_PIN, OUTPUT);
   pinMode(W1_PIN, OUTPUT);
   pinMode(W2_PIN, OUTPUT);
-  
+
   apply_state(leds_off);
-  
+
   pinMode(GREEN_PIN, OUTPUT);
   pinMode(RED_PIN, OUTPUT);
   digitalWrite(RED_PIN, 0);
@@ -175,6 +175,7 @@ void setup()
   memcpy(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC, chip_id, 8);
 
   digitalWrite(RED_PIN, 1);
+  ArduinoOTA.begin();
 
   // OTA
   // do not start OTA server if no password has been set
@@ -349,18 +350,19 @@ void loop() {
   } else {
     led_current.approach(leds_off);
   }
-  
+
   apply_state(led_current);
-  
+
   // process OTA updates
   httpServer.handleClient();
+  ArduinoOTA.handle();
 
   if (!client.connected()) {
     reconnect();
   }
-  
+
   client.loop();
-  
+
   // Post the full status to MQTT every 65535 cycles. This is roughly once a minute
   // this isn't exact, but it doesn't have to be. Usually, clients will store the value
   // internally. This is only used if a client starts up again and did not receive
@@ -371,7 +373,6 @@ void loop() {
     publishW1Brightness();
     publishW2Brightness();
   }
-  
+
   delay(2);
 }
-
