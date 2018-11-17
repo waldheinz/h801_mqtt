@@ -20,12 +20,9 @@ PubSubClient client(wifiClient);
 ESP8266WebServer httpServer(80);
 ESP8266HTTPUpdateServer httpUpdater;
 
-const char *mqtt_server = "192.168.1.10";
+const char *mqtt_server = "blackbox";
 const char *mqtt_user = "";
 const char *mqtt_pass = "";
-// Password for update server
-const char *username = "admin";
-const char *password = "homeassistant";
 
 // MQTT topics
 // state, brightness, rgb
@@ -123,14 +120,12 @@ void setup() {
     // reset if necessary
     // wifiManager.resetSettings();
 
-    wifiManager.setTimeout(3600);
-    WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
+    wifiManager.setTimeout(600);
+    WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server, 40);
     wifiManager.addParameter(&custom_mqtt_server);
-    WiFiManagerParameter custom_password("password", "password for updates", password, 40);
-    wifiManager.addParameter(&custom_password);
-    WiFiManagerParameter custom_mqtt_user("mqttuser", "mqtt user", mqtt_user, 40);
+    WiFiManagerParameter custom_mqtt_user("mqttuser", "MQTT User", mqtt_user, 40);
     wifiManager.addParameter(&custom_mqtt_user);
-    WiFiManagerParameter custom_mqtt_pass("mqttpass", "mqtt pass", mqtt_pass, 40);
+    WiFiManagerParameter custom_mqtt_pass("mqttpass", "MQTT Password", mqtt_pass, 40);
     wifiManager.addParameter(&custom_mqtt_pass);
     wifiManager.setCustomHeadElement(chip_id);
     wifiManager.autoConnect();
@@ -138,7 +133,6 @@ void setup() {
     mqtt_server = custom_mqtt_server.getValue();
     mqtt_user = custom_mqtt_user.getValue();
     mqtt_pass = custom_mqtt_pass.getValue();
-    password = custom_password.getValue();
 
     Serial1.println("WiFi connected");
     Serial1.println("IP address: ");
@@ -166,13 +160,11 @@ void setup() {
     ArduinoOTA.begin();
 
     // OTA
-    // do not start OTA server if no password has been set
-    if (password != "") {
-        MDNS.begin(myhostname);
-        httpUpdater.setup(&httpServer, username, password);
-        httpServer.begin();
-        MDNS.addService("http", "tcp", 80);
-    }
+    MDNS.begin(myhostname);
+    httpUpdater.setup(&httpServer);
+
+    httpServer.begin();
+    MDNS.addService("http", "tcp", 80);
 }
 
 void apply_state(const led_state &s) {
@@ -333,7 +325,7 @@ uint16_t i = 0;
 void loop() {
     i++;
 
-    if (m_global_on) {
+    if (m_global_on && client.connected()) {
         led_current.approach(led_target);
     } else {
         led_current.approach(leds_off);
