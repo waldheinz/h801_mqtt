@@ -24,10 +24,6 @@ const char *mqtt_server = "blackbox";
 const char *mqtt_user = "";
 const char *mqtt_pass = "";
 
-// MQTT topics
-// state, brightness, rgb
-const char *MQTT_UP = "active";
-
 /* global on/off */
 char *MQTT_LIGHT_COMMAND_TOPIC = "XXXXXXXX/light/switch";
 char *MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC = "XXXXXXXX/rgb/set";
@@ -245,9 +241,6 @@ void reconnect() {
                 delay(100);
                 digitalWrite(GREEN_PIN, 1);
             }
-
-            // Once connected, publish an announcement...
-            client.publish(MQTT_UP, chip_id);
 
             // ... and resubscribe
             client.subscribe(MQTT_LIGHT_COMMAND_TOPIC);
