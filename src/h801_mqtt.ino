@@ -24,12 +24,6 @@ const char *mqtt_server = "blackbox";
 const char *mqtt_user = "";
 const char *mqtt_pass = "";
 
-/* global on/off */
-char *MQTT_LIGHT_COMMAND_TOPIC = "XXXXXXXX/light/switch";
-char *MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC = "XXXXXXXX/rgb/set";
-char *MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC = "XXXXXXXX/w1/set";
-char *MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC = "XXXXXXXX/w2/set";
-
 char *chip_id = "00000000";
 char *myhostname = "esp00000000";
 
@@ -131,12 +125,6 @@ void setup() {
     client.setServer(mqtt_server, 1883);
     client.setCallback(callback);
 
-    // replace chip ID in channel names
-    memcpy(MQTT_LIGHT_COMMAND_TOPIC, chip_id, 8);
-    memcpy(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC, chip_id, 8);
-    memcpy(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC, chip_id, 8);
-    memcpy(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC, chip_id, 8);
-
     digitalWrite(RED_PIN, 1);
     ArduinoOTA.begin();
 
@@ -156,38 +144,25 @@ void apply_state(const led_state &s) {
     analogWrite(W2_PIN, s.w2);
 }
 
+bool ends_with(std::string const & value, std::string const & ending) {
+    if (ending.size() > value.size()) {
+        return false;
+    } else {
+        return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+    }
+}
+
 // function called when a MQTT message arrived
-void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
+void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
     // concat the payload into a string
     String payload;
     for (uint8_t i = 0; i < p_length; i++) {
         payload.concat((char)p_payload[i]);
     }
 
-    // handle message topic
-    if (String(MQTT_LIGHT_COMMAND_TOPIC).equals(p_topic)) {
-        // test if the payload is equal to "ON" or "OFF"
-        if (payload.equals(String(LIGHT_ON))) {
-            m_global_on = true;
-        } else if (payload.equals(String(LIGHT_OFF))) {
-            m_global_on = false;
-        }
-    } else if (String(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
-        uint8_t brightness = payload.toInt();
-        if (brightness < 0 || brightness > 255) {
-            // do nothing...
-            return;
-        } else {
-            led_target.w1 = brightness << 2;
-        }
-    } else if (String(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
-        uint8_t brightness = payload.toInt();
-        if (brightness < 0 || brightness > 255) {
-            return;
-        } else {
-            led_target.w2 = brightness << 2;
-        }
-    } else if (String(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC).equals(p_topic)) {
+    std::string const pl(reinterpret_cast<char const *>(p_payload), p_length);
+
+    if (ends_with(p_topic, "rgb/set")) {
         if (payload.startsWith("#")) {
             const long tmp = strtol(&payload[1], NULL, 16);
             led_target.set_r(tmp >> 16);
@@ -219,6 +194,28 @@ void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
                 led_target.set_b(rgb_blue);
             }
         }
+    } else if (ends_with(p_topic, "w1/set")) {
+        uint8_t brightness = payload.toInt();
+        if (brightness < 0 || brightness > 255) {
+            // do nothing...
+            return;
+        } else {
+            led_target.w1 = brightness << 2;
+        }
+    } else if (ends_with(p_topic, "w2/set")) {
+        uint8_t brightness = payload.toInt();
+        if (brightness < 0 || brightness > 255) {
+            return;
+        } else {
+            led_target.w2 = brightness << 2;
+        }
+    } else if (ends_with(p_topic, "switch")) {
+        // test if the payload is equal to "ON" or "OFF"
+        if (payload.equals(String(LIGHT_ON))) {
+            m_global_on = true;
+        } else if (payload.equals(String(LIGHT_OFF))) {
+            m_global_on = false;
+        }
     }
 
     digitalWrite(GREEN_PIN, 0);
@@ -243,10 +240,8 @@ void reconnect() {
             }
 
             // ... and resubscribe
-            client.subscribe(MQTT_LIGHT_COMMAND_TOPIC);
-            client.subscribe(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC);
-            client.subscribe(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC);
-            client.subscribe(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC);
+            std::string const topic = std::string(chip_id) + "/#";
+            client.subscribe(topic.c_str());
         } else {
             Serial1.print("failed, rc=");
             Serial1.print(client.state());
