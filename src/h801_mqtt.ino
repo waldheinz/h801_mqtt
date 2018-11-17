@@ -29,22 +29,13 @@ const char *mqtt_pass = "";
 const char *MQTT_UP = "active";
 
 /* global on/off */
-char *MQTT_LIGHT_STATE_TOPIC = "XXXXXXXX/light/status";
 char *MQTT_LIGHT_COMMAND_TOPIC = "XXXXXXXX/light/switch";
-
-char *MQTT_LIGHT_RGB_RGB_STATE_TOPIC = "XXXXXXXX/rgb/status";
 char *MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC = "XXXXXXXX/rgb/set";
-char *MQTT_LIGHT_W1_BRIGHTNESS_STATE_TOPIC = "XXXXXXXX/w1/status";
 char *MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC = "XXXXXXXX/w1/set";
-char *MQTT_LIGHT_W2_BRIGHTNESS_STATE_TOPIC = "XXXXXXXX/w2/status";
 char *MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC = "XXXXXXXX/w2/set";
 
 char *chip_id = "00000000";
 char *myhostname = "esp00000000";
-
-// buffer used to send/receive data with MQTT
-const uint8_t MSG_BUFFER_SIZE = 20;
-char m_msg_buffer[MSG_BUFFER_SIZE];
 
 // Light
 // the payload that represents enabled/disabled state, by default
@@ -145,15 +136,9 @@ void setup() {
     client.setCallback(callback);
 
     // replace chip ID in channel names
-    memcpy(MQTT_LIGHT_STATE_TOPIC, chip_id, 8);
     memcpy(MQTT_LIGHT_COMMAND_TOPIC, chip_id, 8);
-    memcpy(MQTT_LIGHT_RGB_RGB_STATE_TOPIC, chip_id, 8);
     memcpy(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC, chip_id, 8);
-
-    memcpy(MQTT_LIGHT_W1_BRIGHTNESS_STATE_TOPIC, chip_id, 8);
     memcpy(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC, chip_id, 8);
-
-    memcpy(MQTT_LIGHT_W2_BRIGHTNESS_STATE_TOPIC, chip_id, 8);
     memcpy(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC, chip_id, 8);
 
     digitalWrite(RED_PIN, 1);
@@ -175,31 +160,6 @@ void apply_state(const led_state &s) {
     analogWrite(W2_PIN, s.w2);
 }
 
-// function called to publish the state of the led (on/off)
-void publishGlobalState() {
-    if (m_global_on) {
-        client.publish(MQTT_LIGHT_STATE_TOPIC, LIGHT_ON, true);
-    } else {
-        client.publish(MQTT_LIGHT_STATE_TOPIC, LIGHT_OFF, true);
-    }
-}
-
-// function called to publish the colors of the led (xx(x),xx(x),xx(x))
-void publishRGBColor() {
-    snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d,%d,%d", led_target.r / 4, led_target.g / 4, led_target.b / 4);
-    client.publish(MQTT_LIGHT_RGB_RGB_STATE_TOPIC, m_msg_buffer, true);
-}
-
-void publishW1Brightness() {
-    snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", led_target.w1 >> 2);
-    client.publish(MQTT_LIGHT_W1_BRIGHTNESS_STATE_TOPIC, m_msg_buffer, true);
-}
-
-void publishW2Brightness() {
-    snprintf(m_msg_buffer, MSG_BUFFER_SIZE, "%d", led_target.w2 >> 2);
-    client.publish(MQTT_LIGHT_W2_BRIGHTNESS_STATE_TOPIC, m_msg_buffer, true);
-}
-
 // function called when a MQTT message arrived
 void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
     // concat the payload into a string
@@ -213,10 +173,8 @@ void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
         // test if the payload is equal to "ON" or "OFF"
         if (payload.equals(String(LIGHT_ON))) {
             m_global_on = true;
-            publishGlobalState();
         } else if (payload.equals(String(LIGHT_OFF))) {
             m_global_on = false;
-            publishGlobalState();
         }
     } else if (String(MQTT_LIGHT_W1_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
         uint8_t brightness = payload.toInt();
@@ -225,7 +183,6 @@ void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
             return;
         } else {
             led_target.w1 = brightness << 2;
-            publishW1Brightness();
         }
     } else if (String(MQTT_LIGHT_W2_BRIGHTNESS_COMMAND_TOPIC).equals(p_topic)) {
         uint8_t brightness = payload.toInt();
@@ -233,7 +190,6 @@ void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
             return;
         } else {
             led_target.w2 = brightness << 2;
-            publishW2Brightness();
         }
     } else if (String(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC).equals(p_topic)) {
         if (payload.startsWith("#")) {
@@ -267,9 +223,6 @@ void callback(char *p_topic, byte *p_payload, unsigned int p_length) {
                 led_target.set_b(rgb_blue);
             }
         }
-
-        // updateLEDs();
-        publishRGBColor();
     }
 
     digitalWrite(GREEN_PIN, 0);
@@ -284,21 +237,18 @@ void reconnect() {
         // Attempt to connect
         if (client.connect(chip_id, mqtt_user, mqtt_pass)) {
             Serial1.println("connected");
-            // blink 10 times green LED for success connected
-            for (int x = 0; x < 10; x++) {
+            // blink green LED for success connected
+
+            for (int x = 0; x < 5; x++) {
                 delay(100);
                 digitalWrite(GREEN_PIN, 0);
                 delay(100);
                 digitalWrite(GREEN_PIN, 1);
             }
 
-            client.publish(MQTT_UP, chip_id);
             // Once connected, publish an announcement...
-            // publish the initial values
-            publishGlobalState();
-            publishRGBColor();
-            publishW1Brightness();
-            publishW2Brightness();
+            client.publish(MQTT_UP, chip_id);
+
             // ... and resubscribe
             client.subscribe(MQTT_LIGHT_COMMAND_TOPIC);
             client.subscribe(MQTT_LIGHT_RGB_RGB_COMMAND_TOPIC);
@@ -320,11 +270,7 @@ void reconnect() {
     }
 }
 
-uint16_t i = 0;
-
 void loop() {
-    i++;
-
     if (m_global_on && client.connected()) {
         led_current.approach(led_target);
     } else {
@@ -342,17 +288,6 @@ void loop() {
     }
 
     client.loop();
-
-    // Post the full status to MQTT every 65535 cycles. This is roughly once a
-    // minute this isn't exact, but it doesn't have to be. Usually, clients will
-    // store the value internally. This is only used if a client starts up again
-    // and did not receive previous messages
-    if (i == 0) {
-        publishGlobalState();
-        publishRGBColor();
-        publishW1Brightness();
-        publishW2Brightness();
-    }
 
     delay(2);
 }
