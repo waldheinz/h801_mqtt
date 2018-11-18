@@ -53,7 +53,7 @@ const uint16_t GAMMA_LUT[] PROGMEM =
     , 792,800,807,815,823,831,839,847,855,863,871,879,887,895,903,912,920,928,937,945,954,962,971,979,988,997,1005,1014
     , 1023};
 
-uint8_t m_global_fade_nom = 1;
+uint8_t m_global_fade_nom = 10;
 
 struct led_state {
     uint16_t r, g, b, w1, w2;
@@ -66,12 +66,28 @@ struct led_state {
 
     void set_b(uint8_t _b) { this->b = gamma(_b); }
 
-    void approach(const led_state &tgt) {
-        this->r += (tgt.r > this->r) ? m_global_fade_nom : (tgt.r < this->r) ? -m_global_fade_nom : 0;
-        this->g += (tgt.g > this->g) ? m_global_fade_nom : (tgt.g < this->g) ? -m_global_fade_nom : 0;
-        this->b += (tgt.b > this->b) ? m_global_fade_nom : (tgt.b < this->b) ? -m_global_fade_nom : 0;
-        this->w1 += (tgt.w1 > this->w1) ? m_global_fade_nom : (tgt.w1 < this->w1) ? -m_global_fade_nom : 0;
-        this->w2 += (tgt.w2 > this->w2) ? m_global_fade_nom : (tgt.w2 < this->w2) ? -m_global_fade_nom : 0;
+    void approach(led_state const & tgt) {
+
+        for (int i=0; i < 5; i++) {
+            auto const c = (*this)[i];
+            auto const t = tgt[i];
+
+            if (abs(c - t) <= m_global_fade_nom) {
+                (*this)[i] = t;
+            } else {
+                (*this)[i] += t > c ? m_global_fade_nom : -m_global_fade_nom;
+            }
+        }
+    }
+
+    uint16_t const & operator[](uint8_t idx) const {
+        switch (idx) {
+            case 0: return r;
+            case 1: return g;
+            case 2: return b;
+            case 3: return w1;
+            default: return w2;
+        }
     }
 
     uint16_t & operator[](uint8_t idx) {
@@ -94,23 +110,17 @@ led_state led_target;
 led_state const leds_off;
 
 void setup() {
-    led_target.r = PWMRANGE;
-    led_target.g = PWMRANGE;
-    led_target.b = PWMRANGE;
-    led_target.w1 = PWMRANGE;
-    led_target.w2 = PWMRANGE;
-
     analogWriteRange(PWMRANGE);
     pinMode(RGB_LIGHT_RED_PIN, OUTPUT);
     pinMode(RGB_LIGHT_GREEN_PIN, OUTPUT);
     pinMode(RGB_LIGHT_BLUE_PIN, OUTPUT);
     pinMode(W1_PIN, OUTPUT);
     pinMode(W2_PIN, OUTPUT);
+    pinMode(GREEN_PIN, OUTPUT);
+    pinMode(RED_PIN, OUTPUT);
 
     apply_state(leds_off);
 
-    pinMode(GREEN_PIN, OUTPUT);
-    pinMode(RED_PIN, OUTPUT);
     digitalWrite(RED_PIN, 0);
     digitalWrite(GREEN_PIN, 1);
 
