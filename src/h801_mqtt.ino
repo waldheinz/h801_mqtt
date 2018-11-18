@@ -42,6 +42,9 @@ const char *LIGHT_OFF = "OFF";
 #define GREEN_PIN 1
 #define RED_PIN 5
 
+const uint16_t GAMMA_LUT[] PROGMEM =
+{0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,3,3,3,4,4,5,5,6,6,7,7,8,9,9,10,11,11,12,13,14,15,16,16,17,18,19,20,21,23,24,25,26,27,28,30,31,32,34,35,36,38,39,41,42,44,46,47,49,51,52,54,56,58,60,61,63,65,67,69,71,73,76,78,80,82,84,87,89,91,94,96,98,101,103,106,109,111,114,117,119,122,125,128,130,133,136,139,142,145,148,151,155,158,161,164,167,171,174,177,181,184,188,191,195,198,202,206,209,213,217,221,225,228,232,236,240,244,248,252,257,261,265,269,274,278,282,287,291,295,300,304,309,314,318,323,328,333,337,342,347,352,357,362,367,372,377,382,387,393,398,403,408,414,419,425,430,436,441,447,452,458,464,470,475,481,487,493,499,505,511,517,523,529,535,542,548,554,561,567,573,580,586,593,599,606,613,619,626,633,640,647,653,660,667,674,681,689,696,703,710,717,725,732,739,747,754,762,769,777,784,792,800,807,815,823,831,839,847,855,863,871,879,887,895,903,912,920,928,937,945,954,962,971,979,988,997,1005,1014,1023};
+
 // store the state of the rgb light (colors, brightness, ...)
 boolean m_global_on = true;
 uint8_t m_global_fade_nom = 2;
@@ -51,11 +54,11 @@ struct led_state {
 
     led_state() { r = g = b = w1 = w2 = 0; }
 
-    void set_r(uint8_t _r) { this->r = _r * 4; }
+    void set_r(uint8_t _r) { this->r = gamma(_r); }
 
-    void set_g(uint8_t _g) { this->g = _g * 4; }
+    void set_g(uint8_t _g) { this->g = gamma(_g); }
 
-    void set_b(uint8_t _b) { this->b = _b * 4; }
+    void set_b(uint8_t _b) { this->b = gamma(_b); }
 
     void approach(const led_state &tgt) {
         this->r += (tgt.r > this->r) ? m_global_fade_nom : (tgt.r < this->r) ? -m_global_fade_nom : 0;
@@ -73,6 +76,10 @@ struct led_state {
             case 3: return w1;
             default: return w2;
         }
+    }
+
+    static uint16_t gamma(uint8_t v) {
+        return pgm_read_word(&GAMMA_LUT[v]);
     }
 };
 
@@ -180,7 +187,7 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
             int const end = payload.indexOf(',', start);
 
 
-            led_target[i] = static_cast<uint16_t>(payload.substring(start, end).toInt()) << 2;
+            led_target[i] = led_state::gamma(static_cast<uint8_t>(payload.substring(start, end).toInt()));
 
             if (end < 0) {
                 break;
@@ -228,14 +235,14 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
             // do nothing...
             return;
         } else {
-            led_target.w1 = brightness << 2;
+            led_target.w1 = led_state::gamma(brightness);
         }
     } else if (ends_with(p_topic, "w2/set")) {
         uint8_t brightness = payload.toInt();
         if (brightness < 0 || brightness > 255) {
             return;
         } else {
-            led_target.w2 = brightness << 2;
+            led_target.w2 = led_state::gamma(brightness);
         }
     } else if (ends_with(p_topic, "switch")) {
         // test if the payload is equal to "ON" or "OFF"
