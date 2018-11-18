@@ -4,6 +4,7 @@
 // https://github.com/mertenats/open-home-automation/blob/master/ha_mqtt_rgb_light/ha_mqtt_rgb_light.ino
 //
 #include <string>
+#include <sstream>
 
 #include <ArduinoOTA.h>
 #include <ESP8266HTTPUpdateServer.h>
@@ -43,6 +44,7 @@ const char *LIGHT_OFF = "OFF";
 
 // store the state of the rgb light (colors, brightness, ...)
 boolean m_global_on = true;
+uint8_t m_global_fade_nom = 2;
 
 struct led_state {
     uint16_t r, g, b, w1, w2;
@@ -56,11 +58,21 @@ struct led_state {
     void set_b(uint8_t _b) { this->b = _b * 4; }
 
     void approach(const led_state &tgt) {
-        this->r += (tgt.r > this->r) ? 1 : (tgt.r < this->r) ? -1 : 0;
-        this->g += (tgt.g > this->g) ? 1 : (tgt.g < this->g) ? -1 : 0;
-        this->b += (tgt.b > this->b) ? 1 : (tgt.b < this->b) ? -1 : 0;
-        this->w1 += (tgt.w1 > this->w1) ? 1 : (tgt.w1 < this->w1) ? -1 : 0;
-        this->w2 += (tgt.w2 > this->w2) ? 1 : (tgt.w2 < this->w2) ? -1 : 0;
+        this->r += (tgt.r > this->r) ? m_global_fade_nom : (tgt.r < this->r) ? -m_global_fade_nom : 0;
+        this->g += (tgt.g > this->g) ? m_global_fade_nom : (tgt.g < this->g) ? -m_global_fade_nom : 0;
+        this->b += (tgt.b > this->b) ? m_global_fade_nom : (tgt.b < this->b) ? -m_global_fade_nom : 0;
+        this->w1 += (tgt.w1 > this->w1) ? m_global_fade_nom : (tgt.w1 < this->w1) ? -m_global_fade_nom : 0;
+        this->w2 += (tgt.w2 > this->w2) ? m_global_fade_nom : (tgt.w2 < this->w2) ? -m_global_fade_nom : 0;
+    }
+
+    uint16_t & operator[](uint8_t idx) {
+        switch (idx) {
+            case 0: return r;
+            case 1: return g;
+            case 2: return b;
+            case 3: return w1;
+            default: return w2;
+        }
     }
 };
 
@@ -162,7 +174,23 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
 
     std::string const pl(reinterpret_cast<char const *>(p_payload), p_length);
 
-    if (ends_with(p_topic, "rgb/set")) {
+    if (ends_with(p_topic, "set/all")) {
+
+        for (int i=0, start = 0; i < 5; i++) {
+            int const end = payload.indexOf(',', start);
+
+
+            led_target[i] = static_cast<uint16_t>(payload.substring(start, end).toInt()) << 2;
+
+            if (end < 0) {
+                break;
+            }
+
+            start = end + 1;
+        }
+
+        m_global_on = true;
+    } else if (ends_with(p_topic, "rgb/set")) {
         if (payload.startsWith("#")) {
             const long tmp = strtol(&payload[1], NULL, 16);
             led_target.set_r(tmp >> 16);
@@ -277,5 +305,5 @@ void loop() {
 
     client.loop();
 
-    delay(2);
+    delay(1);
 }
