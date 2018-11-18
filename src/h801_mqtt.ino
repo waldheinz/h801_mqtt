@@ -53,31 +53,39 @@ const uint16_t GAMMA_LUT[] PROGMEM =
     , 792,800,807,815,823,831,839,847,855,863,871,879,887,895,903,912,920,928,937,945,954,962,971,979,988,997,1005,1014
     , 1023};
 
-uint8_t m_global_fade_nom = 10;
+bool const m_global_do_gamma = false;
+uint8_t const m_global_fade_nom = 20;
 
 struct led_state {
     uint16_t r, g, b, w1, w2;
 
     led_state() { r = g = b = w1 = w2 = 0; }
 
-    void set_r(uint8_t _r) { this->r = gamma(_r); }
+    void set_r(uint8_t v)  { this->r  = v << 2; }
+    void set_g(uint8_t v)  { this->g  = v << 2; }
+    void set_b(uint8_t v)  { this->b  = v << 2; }
+    void set_w1(uint8_t v) { this->w1 = v << 2; }
+    void set_w2(uint8_t v) { this->w2 = v << 2; }
 
-    void set_g(uint8_t _g) { this->g = gamma(_g); }
-
-    void set_b(uint8_t _b) { this->b = gamma(_b); }
-
-    void approach(led_state const & tgt) {
+    bool approach(led_state const & tgt) {
+        bool result = false;
 
         for (int i=0; i < 5; i++) {
             auto const c = (*this)[i];
             auto const t = tgt[i];
 
-            if (abs(c - t) <= m_global_fade_nom) {
-                (*this)[i] = t;
-            } else {
-                (*this)[i] += t > c ? m_global_fade_nom : -m_global_fade_nom;
+            if (c != t) {
+                result = true;
+
+                if (abs(c - t) <= m_global_fade_nom) {
+                    (*this)[i] = t;
+                } else {
+                    (*this)[i] += t > c ? m_global_fade_nom : -m_global_fade_nom;
+                }
             }
         }
+
+        return result;
     }
 
     uint16_t const & operator[](uint8_t idx) const {
@@ -100,9 +108,27 @@ struct led_state {
         }
     }
 
+    void apply() const {
+        if (m_global_do_gamma) {
+            analogWrite(RGB_LIGHT_RED_PIN, gamma(r >> 2));
+            analogWrite(RGB_LIGHT_GREEN_PIN, gamma(g >> 2));
+            analogWrite(RGB_LIGHT_BLUE_PIN, gamma(b >> 2));
+            analogWrite(W1_PIN, gamma(w1 >> 2));
+            analogWrite(W2_PIN, gamma(w2 >> 2));
+        } else {
+            analogWrite(RGB_LIGHT_RED_PIN, r);
+            analogWrite(RGB_LIGHT_GREEN_PIN, g);
+            analogWrite(RGB_LIGHT_BLUE_PIN, b);
+            analogWrite(W1_PIN, w1);
+            analogWrite(W2_PIN, w2);
+        }
+    }
+
+private:
     static uint16_t gamma(uint8_t v) {
         return pgm_read_word(&GAMMA_LUT[v]);
     }
+
 };
 
 led_state led_current;
@@ -119,7 +145,7 @@ void setup() {
     pinMode(GREEN_PIN, OUTPUT);
     pinMode(RED_PIN, OUTPUT);
 
-    apply_state(leds_off);
+    leds_off.apply();
 
     digitalWrite(RED_PIN, 0);
     digitalWrite(GREEN_PIN, 1);
@@ -171,14 +197,6 @@ void setup() {
     MDNS.addService("http", "tcp", 80);
 }
 
-void apply_state(const led_state &s) {
-    analogWrite(RGB_LIGHT_RED_PIN, s.r);
-    analogWrite(RGB_LIGHT_GREEN_PIN, s.g);
-    analogWrite(RGB_LIGHT_BLUE_PIN, s.b);
-    analogWrite(W1_PIN, s.w1);
-    analogWrite(W2_PIN, s.w2);
-}
-
 bool ends_with(std::string const & value, std::string const & ending) {
     if (ending.size() > value.size()) {
         return false;
@@ -202,8 +220,7 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
         for (int i=0, start = 0; i < 5; i++) {
             int const end = payload.indexOf(',', start);
 
-
-            led_target[i] = led_state::gamma(static_cast<uint8_t>(payload.substring(start, end).toInt()));
+            led_target[i] = static_cast<uint8_t>(payload.substring(start, end).toInt()) << 2;
 
             if (end < 0) {
                 break;
@@ -250,14 +267,14 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
             // do nothing...
             return;
         } else {
-            led_target.w1 = led_state::gamma(brightness);
+            led_target.set_w1(brightness);
         }
     } else if (ends_with(p_topic, "w2/set")) {
         uint8_t brightness = payload.toInt();
         if (brightness < 0 || brightness > 255) {
             return;
         } else {
-            led_target.w2 = led_state::gamma(brightness);
+            led_target.set_w2(brightness);
         }
     }
 }
@@ -298,13 +315,11 @@ void reconnect() {
 }
 
 void loop() {
-    if (client.connected()) {
-        led_current.approach(led_target);
-    } else {
-        led_current.approach(leds_off);
-    }
+    bool const need_apply = led_current.approach(client.connected() ? led_target : leds_off);
 
-    apply_state(led_current);
+    if (need_apply) {
+        led_current.apply();
+    }
 
     // process OTA updates
     httpServer.handleClient();
@@ -316,5 +331,5 @@ void loop() {
 
     client.loop();
 
-    delay(1);
+    delay(2);
 }
