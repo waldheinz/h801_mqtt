@@ -46,18 +46,6 @@ const char *LIGHT_OFF = "OFF";
 #define GREEN_PIN 1
 #define RED_PIN 5
 
-const uint16_t GAMMA_LUT[] PROGMEM =
-    { 0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,3,3,3,4,4,5,5,6,6,7,7,8,9,9,10,11,11,12,13,14,15,16,16,17,18,19,20,21,23,24,25
-    , 26,27,28,30,31,32,34,35,36,38,39,41,42,44,46,47,49,51,52,54,56,58,60,61,63,65,67,69,71,73,76,78,80,82,84,87,89,91
-    , 94,96,98,101,103,106,109,111,114,117,119,122,125,128,130,133,136,139,142,145,148,151,155,158,161,164,167,171,174
-    , 177,181,184,188,191,195,198,202,206,209,213,217,221,225,228,232,236,240,244,248,252,257,261,265,269,274,278,282
-    , 287,291,295,300,304,309,314,318,323,328,333,337,342,347,352,357,362,367,372,377,382,387,393,398,403,408,414,419
-    , 425,430,436,441,447,452,458,464,470,475,481,487,493,499,505,511,517,523,529,535,542,548,554,561,567,573,580,586
-    , 593,599,606,613,619,626,633,640,647,653,660,667,674,681,689,696,703,710,717,725,732,739,747,754,762,769,777,784
-    , 792,800,807,815,823,831,839,847,855,863,871,879,887,895,903,912,920,928,937,945,954,962,971,979,988,997,1005,1014
-    , 1023};
-
-bool const m_global_do_gamma = false;
 uint8_t const m_global_fade_nom = 10;
 
 uint8_t const PWM_CHANNELS = 5; // RGBWW
@@ -65,11 +53,11 @@ uint32_t const PWM_PERIOD = 4096; // * 200ns ^= 1 kHz
 
 uint32 io_info[PWM_CHANNELS][3] = {
 	// MUX, FUNC, PIN
-	{PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO15, 15},
-	{PERIPHS_IO_MUX_MTDO_U,  FUNC_GPIO13, 13},
-	{PERIPHS_IO_MUX_MTCK_U,  FUNC_GPIO12, 12},
-	{PERIPHS_IO_MUX_MTMS_U,  FUNC_GPIO14, 14},
-    {PERIPHS_IO_MUX_MTMS_U,  FUNC_GPIO4,   4},
+	{ PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO15, RGB_LIGHT_RED_PIN },
+	{ PERIPHS_IO_MUX_MTDO_U,  FUNC_GPIO13, RGB_LIGHT_GREEN_PIN },
+	{ PERIPHS_IO_MUX_MTCK_U,  FUNC_GPIO12, RGB_LIGHT_BLUE_PIN },
+	{ PERIPHS_IO_MUX_MTMS_U,  FUNC_GPIO14, W1_PIN },
+    { PERIPHS_IO_MUX_MTMS_U,  FUNC_GPIO4,  W2_PIN },
 };
 
 struct led_state {
@@ -125,27 +113,13 @@ struct led_state {
     }
 
     void apply() const {
-        if (m_global_do_gamma) {
-            analogWrite(RGB_LIGHT_RED_PIN, gamma(r >> 2));
-            analogWrite(RGB_LIGHT_GREEN_PIN, gamma(g >> 2));
-            analogWrite(RGB_LIGHT_BLUE_PIN, gamma(b >> 2));
-            analogWrite(W1_PIN, gamma(w1 >> 2));
-            analogWrite(W2_PIN, gamma(w2 >> 2));
-        } else {
-            pwm_set_duty(r, 0);  // GPIO15: 10%
-            pwm_set_duty(g, 1); // GPIO15: 100%
-            pwm_set_duty(b, 2); // GPIO15: 100%
-            pwm_set_duty(w1, 3); // GPIO15: 100%
-            pwm_set_duty(w2, 4); // GPIO15: 100%
-            pwm_start();           // commit
-        }
+        pwm_set_duty(r, 0);  // GPIO15: 10%
+        pwm_set_duty(g, 1);  // GPIO15: 100%
+        pwm_set_duty(b, 2);  // GPIO15: 100%
+        pwm_set_duty(w1, 3); // GPIO15: 100%
+        pwm_set_duty(w2, 4); // GPIO15: 100%
+        pwm_start();         // commit
     }
-
-private:
-    static uint16_t gamma(uint8_t v) {
-        return pgm_read_word(&GAMMA_LUT[v]);
-    }
-
 };
 
 led_state led_current;
@@ -337,9 +311,7 @@ void reconnect() {
 }
 
 void loop() {
-    bool const need_apply = led_current.approach(client.connected() ? led_target : leds_off);
-
-    if (need_apply) {
+    if (led_current.approach(led_target)) {
         led_current.apply();
     }
 
@@ -348,10 +320,11 @@ void loop() {
     ArduinoOTA.handle();
 
     if (!client.connected()) {
+        leds_off.apply();
         reconnect();
     }
 
     client.loop();
 
-    delay(2);
+    delay(1);
 }
