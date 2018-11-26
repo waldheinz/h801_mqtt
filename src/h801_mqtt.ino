@@ -15,6 +15,10 @@
 #include <WiFiManager.h>  // WiFi Configuration Magic
 #include <WiFiUdp.h>
 
+extern "C" {
+    #include "ESP8266_new_pwm.h"
+}
+
 WiFiManager wifiManager;
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
@@ -54,18 +58,30 @@ const uint16_t GAMMA_LUT[] PROGMEM =
     , 1023};
 
 bool const m_global_do_gamma = false;
-uint8_t const m_global_fade_nom = 20;
+uint8_t const m_global_fade_nom = 10;
+
+uint8_t const PWM_CHANNELS = 5; // RGBWW
+uint32_t const PWM_PERIOD = 4096; // * 200ns ^= 1 kHz
+
+uint32 io_info[PWM_CHANNELS][3] = {
+	// MUX, FUNC, PIN
+	{PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO15, 15},
+	{PERIPHS_IO_MUX_MTDO_U,  FUNC_GPIO13, 13},
+	{PERIPHS_IO_MUX_MTCK_U,  FUNC_GPIO12, 12},
+	{PERIPHS_IO_MUX_MTMS_U,  FUNC_GPIO14, 14},
+    {PERIPHS_IO_MUX_MTMS_U,  FUNC_GPIO4,   4},
+};
 
 struct led_state {
-    uint16_t r, g, b, w1, w2;
+    uint32_t r, g, b, w1, w2;
 
     led_state() { r = g = b = w1 = w2 = 0; }
 
-    void set_r(uint8_t v)  { this->r  = v << 2; }
-    void set_g(uint8_t v)  { this->g  = v << 2; }
-    void set_b(uint8_t v)  { this->b  = v << 2; }
-    void set_w1(uint8_t v) { this->w1 = v << 2; }
-    void set_w2(uint8_t v) { this->w2 = v << 2; }
+    void set_r(uint8_t v)  { this->r  = v << 4; }
+    void set_g(uint8_t v)  { this->g  = v << 4; }
+    void set_b(uint8_t v)  { this->b  = v << 4; }
+    void set_w1(uint8_t v) { this->w1 = v << 4; }
+    void set_w2(uint8_t v) { this->w2 = v << 4; }
 
     bool approach(led_state const & tgt) {
         bool result = false;
@@ -88,7 +104,7 @@ struct led_state {
         return result;
     }
 
-    uint16_t const & operator[](uint8_t idx) const {
+    uint32_t const & operator[](uint8_t idx) const {
         switch (idx) {
             case 0: return r;
             case 1: return g;
@@ -98,7 +114,7 @@ struct led_state {
         }
     }
 
-    uint16_t & operator[](uint8_t idx) {
+    uint32_t & operator[](uint8_t idx) {
         switch (idx) {
             case 0: return r;
             case 1: return g;
@@ -116,11 +132,12 @@ struct led_state {
             analogWrite(W1_PIN, gamma(w1 >> 2));
             analogWrite(W2_PIN, gamma(w2 >> 2));
         } else {
-            analogWrite(RGB_LIGHT_RED_PIN, r);
-            analogWrite(RGB_LIGHT_GREEN_PIN, g);
-            analogWrite(RGB_LIGHT_BLUE_PIN, b);
-            analogWrite(W1_PIN, w1);
-            analogWrite(W2_PIN, w2);
+            pwm_set_duty(r, 0);  // GPIO15: 10%
+            pwm_set_duty(g, 1); // GPIO15: 100%
+            pwm_set_duty(b, 2); // GPIO15: 100%
+            pwm_set_duty(w1, 3); // GPIO15: 100%
+            pwm_set_duty(w2, 4); // GPIO15: 100%
+            pwm_start();           // commit
         }
     }
 
@@ -145,7 +162,12 @@ void setup() {
     pinMode(GREEN_PIN, OUTPUT);
     pinMode(RED_PIN, OUTPUT);
 
-    leds_off.apply();
+    // initial duty: all off
+    uint32 pwm_duty_init[PWM_CHANNELS] = {0, 0, 0, 0, 0};
+    pwm_init(PWM_PERIOD, pwm_duty_init, PWM_CHANNELS, io_info);
+    pwm_start();
+
+    // leds_off.apply();
 
     digitalWrite(RED_PIN, 0);
     digitalWrite(GREEN_PIN, 1);
@@ -220,7 +242,7 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
         for (int i=0, start = 0; i < 5; i++) {
             int const end = payload.indexOf(',', start);
 
-            led_target[i] = static_cast<uint8_t>(payload.substring(start, end).toInt()) << 2;
+            led_target[i] = static_cast<uint32_t>(payload.substring(start, end).toInt());
 
             if (end < 0) {
                 break;
