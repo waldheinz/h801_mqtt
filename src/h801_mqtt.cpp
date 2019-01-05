@@ -6,6 +6,7 @@
 #include <string>
 #include <sstream>
 
+#include <Arduino.h>
 #include <ArduinoOTA.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266WebServer.h> // Local WebServer used to serve the configuration portal
@@ -126,73 +127,6 @@ led_state led_current;
 led_state led_target;
 led_state const leds_off;
 
-void setup() {
-    analogWriteRange(PWMRANGE);
-    pinMode(RGB_LIGHT_RED_PIN, OUTPUT);
-    pinMode(RGB_LIGHT_GREEN_PIN, OUTPUT);
-    pinMode(RGB_LIGHT_BLUE_PIN, OUTPUT);
-    pinMode(W1_PIN, OUTPUT);
-    pinMode(W2_PIN, OUTPUT);
-    pinMode(GREEN_PIN, OUTPUT);
-    pinMode(RED_PIN, OUTPUT);
-
-    // initial duty: all off
-    uint32 pwm_duty_init[PWM_CHANNELS] = {0, 0, 0, 0, 0};
-    pwm_init(PWM_PERIOD, pwm_duty_init, PWM_CHANNELS, io_info);
-    pwm_start();
-
-    // leds_off.apply();
-
-    digitalWrite(RED_PIN, 0);
-    digitalWrite(GREEN_PIN, 1);
-
-    sprintf(chip_id, "%08X", ESP.getChipId());
-    sprintf(myhostname, "esp%08X", ESP.getChipId());
-
-    // Setup console
-    Serial1.begin(115200);
-    delay(10);
-    Serial1.println();
-    Serial1.println();
-
-    // reset if necessary
-    // wifiManager.resetSettings();
-
-    wifiManager.setTimeout(600);
-    WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server, 40);
-    wifiManager.addParameter(&custom_mqtt_server);
-    WiFiManagerParameter custom_mqtt_user("mqttuser", "MQTT User", mqtt_user, 40);
-    wifiManager.addParameter(&custom_mqtt_user);
-    WiFiManagerParameter custom_mqtt_pass("mqttpass", "MQTT Password", mqtt_pass, 40);
-    wifiManager.addParameter(&custom_mqtt_pass);
-    wifiManager.setCustomHeadElement(chip_id);
-    wifiManager.autoConnect();
-
-    mqtt_server = custom_mqtt_server.getValue();
-    mqtt_user = custom_mqtt_user.getValue();
-    mqtt_pass = custom_mqtt_pass.getValue();
-
-    Serial1.println("WiFi connected");
-    Serial1.println("IP address: ");
-    Serial1.println(WiFi.localIP());
-    Serial1.print("Chip ID: ");
-    Serial1.println(chip_id);
-
-    // init the MQTT connection
-    client.setServer(mqtt_server, 1883);
-    client.setCallback(callback);
-
-    digitalWrite(RED_PIN, 1);
-    ArduinoOTA.begin();
-
-    // OTA
-    MDNS.begin(myhostname);
-    httpUpdater.setup(&httpServer);
-
-    httpServer.begin();
-    MDNS.addService("http", "tcp", 80);
-}
-
 bool ends_with(std::string const & value, std::string const & ending) {
     if (ending.size() > value.size()) {
         return false;
@@ -308,6 +242,73 @@ void reconnect() {
             }
         }
     }
+}
+
+void setup() {
+    analogWriteRange(PWMRANGE);
+    pinMode(RGB_LIGHT_RED_PIN, OUTPUT);
+    pinMode(RGB_LIGHT_GREEN_PIN, OUTPUT);
+    pinMode(RGB_LIGHT_BLUE_PIN, OUTPUT);
+    pinMode(W1_PIN, OUTPUT);
+    pinMode(W2_PIN, OUTPUT);
+    pinMode(GREEN_PIN, OUTPUT);
+    pinMode(RED_PIN, OUTPUT);
+
+    // initial duty: all off
+    uint32 pwm_duty_init[PWM_CHANNELS] = {0, 0, 0, 0, 0};
+    pwm_init(PWM_PERIOD, pwm_duty_init, PWM_CHANNELS, io_info);
+    pwm_start();
+
+    // leds_off.apply();
+
+    digitalWrite(RED_PIN, 0);
+    digitalWrite(GREEN_PIN, 1);
+
+    sprintf(chip_id, "%08X", ESP.getChipId());
+    sprintf(myhostname, "esp%08X", ESP.getChipId());
+
+    // Setup console
+    Serial1.begin(115200);
+    delay(10);
+    Serial1.println();
+    Serial1.println();
+
+    // reset if necessary
+    // wifiManager.resetSettings();
+
+    wifiManager.setTimeout(600);
+    WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server, 40);
+    wifiManager.addParameter(&custom_mqtt_server);
+    WiFiManagerParameter custom_mqtt_user("mqttuser", "MQTT User", mqtt_user, 40);
+    wifiManager.addParameter(&custom_mqtt_user);
+    WiFiManagerParameter custom_mqtt_pass("mqttpass", "MQTT Password", mqtt_pass, 40);
+    wifiManager.addParameter(&custom_mqtt_pass);
+    wifiManager.setCustomHeadElement(chip_id);
+    wifiManager.autoConnect();
+
+    mqtt_server = custom_mqtt_server.getValue();
+    mqtt_user = custom_mqtt_user.getValue();
+    mqtt_pass = custom_mqtt_pass.getValue();
+
+    Serial1.println("WiFi connected");
+    Serial1.println("IP address: ");
+    Serial1.println(WiFi.localIP());
+    Serial1.print("Chip ID: ");
+    Serial1.println(chip_id);
+
+    // init the MQTT connection
+    client.setServer(mqtt_server, 1883);
+    client.setCallback(callback);
+
+    digitalWrite(RED_PIN, 1);
+    ArduinoOTA.begin();
+
+    // OTA
+    MDNS.begin(myhostname);
+    httpUpdater.setup(&httpServer);
+
+    httpServer.begin();
+    MDNS.addService("http", "tcp", 80);
 }
 
 void loop() {
