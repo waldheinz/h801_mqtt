@@ -268,7 +268,7 @@ void setup() {
     sprintf(myhostname, "esp%08X", ESP.getChipId());
 
     // Setup console
-    Serial1.begin(115200);
+    Serial1.begin(9600);
     delay(10);
     Serial1.println();
     Serial1.println();
