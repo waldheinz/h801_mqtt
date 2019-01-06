@@ -20,15 +20,14 @@ extern "C" {
     #include "ESP8266_new_pwm.h"
 }
 
-WiFiManager wifiManager;
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 ESP8266WebServer httpServer(80);
 ESP8266HTTPUpdateServer httpUpdater;
 
-const char *mqtt_server = "blackbox";
-const char *mqtt_user = "";
-const char *mqtt_pass = "";
+std::string mqtt_server = "blackbox";
+std::string mqtt_user = "";
+std::string mqtt_pass = "";
 
 char *chip_id = "00000000";
 char *myhostname = "esp00000000";
@@ -210,11 +209,13 @@ void callback(char const * p_topic, byte * p_payload, unsigned int p_length) {
 }
 
 void reconnect() {
-    // Loop until we're reconnected
     while (!client.connected()) {
-        Serial1.print("Attempting MQTT connection...");
+        Serial1.print("Attempting MQTT connection to ");
+        Serial1.print(mqtt_server.c_str());
+        Serial1.print("...");
+
         // Attempt to connect
-        if (client.connect(chip_id, mqtt_user, mqtt_pass)) {
+        if (client.connect(chip_id, mqtt_user.c_str(), mqtt_pass.c_str())) {
             Serial1.println("connected");
             // blink green LED for success connected
 
@@ -231,7 +232,6 @@ void reconnect() {
         } else {
             Serial1.print("failed, rc=");
             Serial1.print(client.state());
-            Serial1.print(mqtt_server);
             Serial1.println(" try again in 5 seconds");
             // Wait about 5 seconds (10 x 500ms) before retrying
             for (int x = 0; x < 10; x++) {
@@ -259,8 +259,6 @@ void setup() {
     pwm_init(PWM_PERIOD, pwm_duty_init, PWM_CHANNELS, io_info);
     pwm_start();
 
-    // leds_off.apply();
-
     digitalWrite(RED_PIN, 0);
     digitalWrite(GREEN_PIN, 1);
 
@@ -274,14 +272,15 @@ void setup() {
     Serial1.println();
 
     // reset if necessary
+    WiFiManager wifiManager;
     // wifiManager.resetSettings();
 
     wifiManager.setTimeout(600);
-    WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server, 40);
+    WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server.c_str(), 40);
     wifiManager.addParameter(&custom_mqtt_server);
-    WiFiManagerParameter custom_mqtt_user("mqttuser", "MQTT User", mqtt_user, 40);
+    WiFiManagerParameter custom_mqtt_user("mqttuser", "MQTT User", mqtt_user.c_str(), 40);
     wifiManager.addParameter(&custom_mqtt_user);
-    WiFiManagerParameter custom_mqtt_pass("mqttpass", "MQTT Password", mqtt_pass, 40);
+    WiFiManagerParameter custom_mqtt_pass("mqttpass", "MQTT Password", mqtt_pass.c_str(), 40);
     wifiManager.addParameter(&custom_mqtt_pass);
     wifiManager.setCustomHeadElement(chip_id);
     wifiManager.autoConnect();
@@ -297,7 +296,7 @@ void setup() {
     Serial1.println(chip_id);
 
     // init the MQTT connection
-    client.setServer(mqtt_server, 1883);
+    client.setServer(mqtt_server.c_str(), 1883);
     client.setCallback(callback);
 
     digitalWrite(RED_PIN, 1);
